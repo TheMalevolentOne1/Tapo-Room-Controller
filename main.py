@@ -68,7 +68,7 @@ async def handle_command(device, cmd: str):
         h, s, _ = colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
         await device.set_hue_saturation(int(h * 360), max(1, int(s * 100)))
     else:
-        print("Unknown Colour")
+        print("Unknown Colour.")
 
 async def main():
     device = await setup_light()
