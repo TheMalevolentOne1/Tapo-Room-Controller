@@ -3,12 +3,13 @@ import os
 import colorsys
 from dotenv import load_dotenv
 from tapo import ApiClient
+import argparse
 
 COLOUR_MAP = {
     "red": (255, 0, 0),
     "green": (0, 255, 0),
     "blue": (0, 0, 255),
-    "white": (255, 255, 255),
+    "white": (0, 0, 0),
     "orange": (255, 165, 0),
     "yellow": (255, 255, 0),
     "purple": (128, 0, 128),
@@ -20,10 +21,11 @@ COLOUR_MAP = {
 async def setup_light():
     load_dotenv()
 
-    client = ApiClient(
-        os.getenv("TAPO_USERNAME"),
-        os.getenv("TAPO_PASSWORD")
-    )
+    try:
+        client = ApiClient(os.getenv("TAPO_USERNAME"), os.getenv("TAPO_PASSWORD"))
+    except TypeError:
+        print("Verify existence of .env with Tapo Creds")
+        return
 
     device = await client.l530("192.168.1.234")
     return device
@@ -32,36 +34,21 @@ global power
 global brightness
 global colour
 
-async def handle_command(device, cmd: str):
-    power = 0
-    brightness = 0
-    colour = COLOUR_MAP["white"]
-
-    parts = cmd.strip().split()
-
-    if len(parts) != 3:
-        if len(parts) >= 4 or (len(parts) > 1 and parts[1] not in COLOUR_MAP):
-            print("Invalid command")
-            return
-        else:
-            print("Format: <1|0> <colour> <brightness>")
-            return
-    else:
-        power, colour, brightness = parts
-
-    power = int(power)
-
+async def toggle_power(device, power):
     # Power control
     if power:
         await device.on()
     else:
         await device.off()
-        return
+    return
 
+async def change_brightness(device, brightness):
     # Brightness
     brightness = max(1, min(100, int(brightness)))
     await device.set_brightness(brightness)
+    return
 
+async def change_colour(device, colour):
     # colour
     if colour in COLOUR_MAP:
         r, g, b = COLOUR_MAP[colour]
@@ -72,18 +59,40 @@ async def handle_command(device, cmd: str):
 
 async def main():
     device = await setup_light()
+    if not device:
+        return
 
-    print("Command format: 1 blue 100")
-    print("Type 'exit' to quit")
+    if args.mode == "normal":
+        await toggle_power(device, args.power)
+        await change_colour(device, args.colour)
+        await change_brightness(device, args.brightness)
 
-    while True:
-        cmd = input("> ")
+    elif args.mode == "custom":
+        await toggle_power(device, args.power)
 
-        if cmd.lower() == "exit":
-            break
+        # Convert RGB → HSV (same logic you used)
+        h, s, _ = colorsys.rgb_to_hsv(args.r / 255, args.g / 255, args.b / 255)
+        await device.set_hue_saturation(int(h * 360), max(1, int(s * 100)))
 
-        await handle_command(device, cmd)
+        await change_brightness(device, args.brightness)
 
+parser = argparse.ArgumentParser(description="Tapo Room Controller")
 
-if __name__ == "__main__":
-    asyncio.run(main())
+subparsers = parser.add_subparsers(dest="mode", required=True)
+
+# Normal mode
+normal = subparsers.add_parser("normal")
+normal.add_argument("power", type=int)
+normal.add_argument("colour", type=str)
+normal.add_argument("--brightness", type=int, default=100)
+
+# Custom mode
+custom = subparsers.add_parser("custom")
+custom.add_argument("power", type=int)
+custom.add_argument("r", type=int)
+custom.add_argument("g", type=int)
+custom.add_argument("b", type=int)
+custom.add_argument("--brightness", type=int, default=100)
+
+args = parser.parse_args()
+asyncio.run(main())
