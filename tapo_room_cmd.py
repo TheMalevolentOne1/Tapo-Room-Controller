@@ -79,6 +79,7 @@ async def setup_light():
         print("Verify existence of .env with Tapo Creds")
         return
 
+    device = client.l530(os.getenv("LOCAL_IP"))
     return device
 
 async def is_device_on(device):
